@@ -8,45 +8,49 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from datetime import datetime
-import tkinter as tk
-from pathlib import Path
-from tkinter import filedialog, simpledialog, messagebox
+from io import BytesIO
 
 # ==================== FUNCIONES DE EXTRACCIÓN ====================
 
-def extract_text_from_pdf(pdf_input):
-    """
-    Extrae todo el texto de un PDF.
-    pdf_input: puede ser una ruta (str) o un objeto file-like (BytesIO)
-    """
-    # Si es ruta
-    if isinstance(pdf_input, str):
-        if not os.path.exists(pdf_input):
-            return f"Error: El archivo no se encontró en la ruta: {pdf_input}"
-        file = open(pdf_input, 'rb')
-        close_file = True
-    else:
-        # file-like object
-        file = pdf_input
-        close_file = False
-
+def extract_text_from_pdf(pdf_path_or_bytes):
+    """Extrae todo el texto de un archivo PDF (ruta o BytesIO)."""
     try:
-        reader = PyPDF2.PdfReader(file)
-        num_pages = len(reader.pages)
-        print(f"El PDF tiene {num_pages} páginas.")
-
         full_text = ""
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                full_text += page_text + "\n--- Fin de Página ---\n"
+        
+        # Manejar tanto rutas de archivo como objetos BytesIO
+        if isinstance(pdf_path_or_bytes, (str, bytes)) and os.path.exists(pdf_path_or_bytes):
+            # Es una ruta de archivo
+            with open(pdf_path_or_bytes, 'rb') as file:
+                reader = PyPDF2.PdfReader(file)
+                num_pages = len(reader.pages)
+                print(f"El PDF tiene {num_pages} páginas.")
 
+                for page_num in range(num_pages):
+                    page = reader.pages[page_num]
+                    page_text = page.extract_text()
+                    if page_text:
+                        full_text += page_text + "\n--- Fin de Página ---\n"
+        
+        elif hasattr(pdf_path_or_bytes, 'read'):
+            # Es un objeto BytesIO o similar
+            pdf_path_or_bytes.seek(0)  # Asegurarse de que estamos al inicio
+            reader = PyPDF2.PdfReader(pdf_path_or_bytes)
+            num_pages = len(reader.pages)
+            print(f"El PDF tiene {num_pages} páginas.")
+
+            for page_num in range(num_pages):
+                page = reader.pages[page_num]
+                page_text = page.extract_text()
+                if page_text:
+                    full_text += page_text + "\n--- Fin de Página ---\n"
+        
+        else:
+            return f"Error: Tipo de entrada no válido para PDF: {type(pdf_path_or_bytes)}"
+        
         return full_text
+        
     except Exception as e:
         return f"Ocurrió un error al procesar el PDF: {e}"
-    finally:
-        if close_file:
-            file.close()
 
 def extract_vendedor_y_rut(text):
     """Busca el nombre del cliente y su RUT en el texto extraído."""
@@ -130,10 +134,6 @@ def extract_numero_cotizacion(text):
         return match.group(1).strip()
     return "No encontrado"
 
-import re
-
-import re
-
 def extract_productos_mejorado(text):
     """
     Extrae TODOS los productos/materiales de la cotización con debugging mejorado.
@@ -153,7 +153,6 @@ def extract_productos_mejorado(text):
     
     if not seccion_productos:
         print("❌ No se encontró la sección de productos")
-        # DEBUG: Buscar dónde están los encabezados
         lines = text.split('\n')
         for i, line in enumerate(lines):
             if 'Pos' in line or 'Material' in line or 'Descripción' in line:
@@ -165,10 +164,9 @@ def extract_productos_mejorado(text):
     # DEBUG: Mostrar la sección completa de productos
     print("\n📄 SECCIÓN DE PRODUCTOS ENCONTRADA:")
     print("-" * 100)
-    print(texto_productos[:1000])  # Primeros 1000 caracteres
+    print(texto_productos[:1000])
     print("-" * 100)
     
-    # 2️⃣ Analizar línea por línea para entender la estructura
     lineas = texto_productos.split('\n')
     print(f"\n📊 Total de líneas en la sección: {len(lineas)}")
     print("\n🔍 ANALIZANDO PRIMERAS 20 LÍNEAS:")
@@ -178,18 +176,11 @@ def extract_productos_mejorado(text):
             print(f"Línea {i:2d}: |{linea}|")
     print("-" * 100)
     
-    # 3️⃣ Patrones a probar
+    # Patrones a probar
     patrones = [
-        # Patrón 1: Formato estándar con todos los campos
         r'(\d+)\s+(\d+)\s+([^\n]+?)\s+(\d+)\s+(UN|ROM|KG|MT|M2|M3)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)',
-        
-        # Patrón 2: Más flexible con espacios
         r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+)\s+(\w+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)',
-        
-        # Patrón 3: Considerando posibles saltos de línea
         r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+)\s+(\w+)\s+\$?\s*([\d.,]+)\s+\$?\s*([\d.,]+)\s+\$?\s*([\d.,]+)\s+\$?\s*([\d.,]+)',
-        
-        # Patrón 4: Con símbolos de moneda opcionales
         r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+)\s+([A-Z]+)\s+\$?\s*([\d\s.,]+)\s+\$?\s*([\d\s.,]+)\s+\$?\s*([\d\s.,]+)\s+\$?\s*([\d\s.,]+)',
     ]
     
@@ -215,7 +206,6 @@ def extract_productos_mejorado(text):
     print(f"\n✅ PATRÓN EXITOSO: #{patron_exitoso}")
     print(f"📦 Total de productos encontrados: {len(matches)}")
     
-    # 4️⃣ Procesar cada producto encontrado
     print("\n" + "="*100)
     print("📋 DETALLE DE PRODUCTOS EXTRAÍDOS:")
     print("="*100)
@@ -237,7 +227,6 @@ def extract_productos_mejorado(text):
                 'valor_total': match[8].strip() if len(match) > 8 else "0"
             }
             
-            # DEBUG: Mostrar cada campo
             print(f"  Pos: {producto['posicion']}")
             print(f"  Código: {producto['codigo_material']}")
             print(f"  Descripción: {producto['descripcion'][:50]}...")
@@ -318,17 +307,30 @@ def formatear_numero_miles(numero):
     except:
         return str(numero)
 
-def crear_orden_compra_pdf(datos_cotizacion, numero_oc_manual, nombre_archivo="orden_compra.pdf", ruta_logo="imagenes/logo.png", ruta_firma="imagenes/firma.png"):
+def crear_orden_compra_pdf(datos_cotizacion, numero_oc_manual, nombre_archivo="orden_compra.pdf", ruta_logo=None, ruta_firma=None):
     """
-    Crea un PDF de Orden de Compra con el formato EASY.
+    Crea un PDF de Orden de Compra con el formato actualizado usando datos de empresa compradora.
     
     Args:
-        datos_cotizacion: Diccionario con los datos extraídos
+        datos_cotizacion: Diccionario con los datos extraídos (incluye empresa_compradora)
         numero_oc_manual: Número de orden de compra ingresado manualmente
-        nombre_archivo: Nombre del archivo de salida
+        nombre_archivo: Nombre del archivo de salida o BytesIO
         ruta_logo: Ruta al archivo de imagen del logo (opcional)
         ruta_firma: Ruta al archivo de imagen de la firma (opcional)
     """
+    
+    # 🔧 DEBUG: Mostrar qué rutas se están usando
+    print(f"\n🔍 DEBUG - Rutas de imágenes:")
+    print(f"   Logo: {ruta_logo}")
+    print(f"   Logo existe: {os.path.exists(ruta_logo) if ruta_logo else False}")
+    print(f"   Firma: {ruta_firma}")
+    print(f"   Firma existe: {os.path.exists(ruta_firma) if ruta_firma else False}")
+    
+    # 🏢 Obtener datos de la empresa compradora
+    empresa_compradora = datos_cotizacion.get('empresa_compradora', {})
+    
+    print(f"\n🏢 Empresa compradora:")
+    print(f"   {empresa_compradora.get('razon_social', 'No definida')}")
     
     doc = SimpleDocTemplate(
         nombre_archivo,
@@ -382,37 +384,39 @@ def crear_orden_compra_pdf(datos_cotizacion, numero_oc_manual, nombre_archivo="o
         except Exception as e:
             print(f"⚠ Error al cargar el logo: {e}")
     else:
-        print(f"⚠ Logo no encontrado en: {ruta_logo}")
+        print(f"⚠ Logo omitido. Ruta: {ruta_logo}")
     
     # TÍTULO con número de OC ingresado manualmente
     titulo = Paragraph(f"ORDEN DE COMPRA {numero_oc_manual}", title_style)
     elements.append(titulo)
     elements.append(Spacer(1, 0.3*inch))
     
-    # DATOS DEL COMPRADOR
-    cliente_nombre = datos_cotizacion.get('cliente_nombre', 'VICTOR ALMONACID ULLOA')
-    cliente_rut = datos_cotizacion.get('cliente_rut', '10.573.124-8')
+    # 🏢 DATOS DE LA EMPRESA COMPRADORA (dinámicos) - PARTE SUPERIOR
+    elements.append(Paragraph(f"<b>{empresa_compradora.get('razon_social', 'EMPRESA NO DEFINIDA').upper()}</b>", bold_style))
+    elements.append(Paragraph(f"RUT: {empresa_compradora.get('rut', 'N/A')}", normal_style))
     
-    elements.append(Paragraph(f"<b>{cliente_nombre.upper()}</b>", bold_style))
-    elements.append(Paragraph(f"RUT: {cliente_rut}", normal_style))
-    elements.append(Paragraph("AVDA LO ESPEJO 01565 LO ESPEJO", normal_style))
-    elements.append(Paragraph("TELÉFONO: 974304421", normal_style))
+    # Construir dirección completa
+    direccion_completa = f"{empresa_compradora.get('direccion', 'N/A')}"
+    if empresa_compradora.get('comuna', 'N/A') != 'N/A':
+        direccion_completa += f" {empresa_compradora.get('comuna', '').upper()}"
+    
+    elements.append(Paragraph(direccion_completa.upper(), normal_style))
+    elements.append(Paragraph(f"TELÉFONO: {empresa_compradora.get('telefono', 'N/A')}", normal_style))
     elements.append(Paragraph(datetime.now().strftime("%d-%m-%Y"), normal_style))
     elements.append(Spacer(1, 0.3*inch))
     
-    # DATOS DEL PROVEEDOR
+    # DATOS DEL PROVEEDOR (MANTENER COMO ESTABAN - HARDCODEADOS)
     elements.append(Paragraph("<b>DATOS DEL PROVEEDOR</b>", bold_style))
     elements.append(Spacer(1, 0.1*inch))
     
-    vendedor_nombre = datos_cotizacion.get('vendedor', 'BARBARA MONDACA').upper()
-    
+    # 🔒 DATOS FIJOS DEL PROVEEDOR (EASY)
     proveedor_data = [
         [Paragraph("<b>Razón Social</b>", normal_style), 
          Paragraph("EASY RETAIL S. A", normal_style),
          Paragraph("<b>COMUNA</b>", normal_style), 
          Paragraph("PEDRO AGUIRRE<br/>CERDA", normal_style)],
         [Paragraph("<b>Contacto</b>", normal_style), 
-         Paragraph(vendedor_nombre, normal_style),
+         Paragraph("BARBARA MONDACA", normal_style),
          Paragraph("<b>RUT</b>", normal_style), 
          Paragraph("76.568.660-1", normal_style)],
         [Paragraph("<b>Dirección</b>", normal_style), 
@@ -519,21 +523,20 @@ def crear_orden_compra_pdf(datos_cotizacion, numero_oc_manual, nombre_archivo="o
         except Exception as e:
             print(f"⚠ Error al cargar la firma: {e}")
     else:
-        print(f"⚠ Firma no encontrada en: {ruta_firma}")
+        print(f"⚠ Firma omitida. Ruta: {ruta_firma}")
     
     # Construir el PDF
     doc.build(elements)
-    print(f"\n✓ Orden de Compra generada exitosamente: {nombre_archivo}")
+    print(f"\n✓ Orden de Compra generada exitosamente")
     return nombre_archivo
-
 # ==================== FUNCIÓN PRINCIPAL ====================
 
-def procesar_cotizacion_y_generar_oc(pdf_path, numero_oc_manual, nombre_oc=None, ruta_logo=None, ruta_firma=None, carpeta_salida=None):
+def procesar_cotizacion_y_generar_oc(pdf_path_or_bytes, numero_oc_manual, nombre_oc=None, ruta_logo=None, ruta_firma=None, carpeta_salida=None):
     """
     Función principal que extrae datos de una cotización PDF y genera una Orden de Compra.
     
     Args:
-        pdf_path: Ruta al archivo PDF de cotización
+        pdf_path_or_bytes: Ruta al archivo PDF de cotización o objeto BytesIO
         numero_oc_manual: Número de orden de compra ingresado manualmente
         nombre_oc: Nombre opcional para el archivo de salida
         ruta_logo: Ruta al archivo de imagen del logo (opcional)
@@ -545,8 +548,12 @@ def procesar_cotizacion_y_generar_oc(pdf_path, numero_oc_manual, nombre_oc=None,
     print("="*95 + "\n")
     
     # 1. Extraer texto del PDF
-    print(f"1. Extrayendo texto del PDF: {os.path.basename(pdf_path)}")
-    extracted_text = extract_text_from_pdf(pdf_path)
+    if hasattr(pdf_path_or_bytes, 'read'):
+        print("1. Extrayendo texto del PDF (desde BytesIO)...")
+    else:
+        print(f"1. Extrayendo texto del PDF: {os.path.basename(pdf_path_or_bytes)}")
+    
+    extracted_text = extract_text_from_pdf(pdf_path_or_bytes)
     
     if "Error:" in extracted_text:
         print(f"❌ {extracted_text}")
@@ -571,7 +578,7 @@ def procesar_cotizacion_y_generar_oc(pdf_path, numero_oc_manual, nombre_oc=None,
     
     # 4. Generar nombre de archivo de salida
     if nombre_oc is None:
-        nombre_archivo = f"ORDEN_DE_COMPRA_EASY_{numero_oc_manual}.pdf"
+        nombre_archivo = f"ORDEN_DE_COMPRA_{numero_oc_manual}.pdf"
         if carpeta_salida:
             nombre_oc = os.path.join(carpeta_salida, nombre_archivo)
         else:
@@ -592,79 +599,98 @@ def procesar_cotizacion_y_generar_oc(pdf_path, numero_oc_manual, nombre_oc=None,
 
 # ==================== EJECUCIÓN ====================
 
-if __name__ == "__main__":
-    # Crear ventana oculta de tkinter
-    root = tk.Tk()
-    root.withdraw()
-    
-    print("="*95)
+def obtener_ruta_pdf():
+    """Solicita al usuario la ruta del archivo PDF de cotización."""
+    print("\n" + "="*95)
     print("SELECCIÓN DE ARCHIVO PDF")
     print("="*95)
-    print("\n📁 Por favor, selecciona el archivo PDF de cotización a procesar...\n")
     
-    # Abrir diálogo para seleccionar archivo PDF
-    pdf_file_path = filedialog.askopenfilename(
-        title="Selecciona el PDF de cotización",
-        filetypes=[("Archivos PDF", "*.pdf"), ("Todos los archivos", "*.*")]
-    )
-    
-    # Verificar si el usuario seleccionó un archivo
-    if not pdf_file_path:
-        print("❌ No se seleccionó ningún archivo. Proceso cancelado.")
-        exit()
-    
-    print(f"✓ Archivo seleccionado: {os.path.basename(pdf_file_path)}\n")
-    
-    # Solicitar número de orden de compra
-    print("="*95)
+    while True:
+        pdf_path = input("\n👉 Ruta del PDF: ").strip().strip('"')
+        
+        if not pdf_path:
+            print("❌ No se ingresó ninguna ruta. Intenta nuevamente.")
+            continue
+            
+        if not os.path.exists(pdf_path):
+            print(f"❌ El archivo no existe en la ruta: {pdf_path}")
+            print("   Verifica la ruta e intenta nuevamente.")
+            continue
+            
+        if not pdf_path.lower().endswith('.pdf'):
+            print("❌ El archivo seleccionado no es un PDF.")
+            continue
+            
+        print(f"✓ Archivo seleccionado: {os.path.basename(pdf_path)}")
+        return pdf_path
+
+def obtener_numero_oc():
+    """Solicita al usuario el número de orden de compra."""
+    print("\n" + "="*95)
     print("INGRESO DE NÚMERO DE ORDEN DE COMPRA")
     print("="*95)
     
-    numero_oc = simpledialog.askstring(
-        "Número de Orden de Compra",
-        "Ingrese el número de la Orden de Compra:",
-        parent=root
-    )
-    
-    if not numero_oc or numero_oc.strip() == "":
-        messagebox.showerror("Error", "Debe ingresar un número de orden de compra válido.")
-        print("❌ No se ingresó un número de OC válido. Proceso cancelado.")
-        exit()
-    
-    numero_oc = numero_oc.strip()
-    print(f"✓ Número de OC ingresado: {numero_oc}\n")
+    while True:
+        numero_oc = input("\n👉 Ingresa el número de la Orden de Compra: ").strip()
+        
+        if not numero_oc:
+            print("❌ Debes ingresar un número de orden de compra válido.")
+            continue
+            
+        print(f"✓ Número de OC ingresado: {numero_oc}")
+        return numero_oc
 
-    # Obtener el directorio donde está el script
+if __name__ == "__main__":
+    print("\n" + "="*95)
+    print("🚀 GENERADOR DE ORDEN DE COMPRA")
+    print("="*95)
+    
+    # 1. Obtener ruta del PDF
+    pdf_file_path = obtener_ruta_pdf()
+    
+    # 2. Obtener número de OC
+    numero_oc = obtener_numero_oc()
+
+    # 3. Obtener el directorio donde está el script
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
+    
+    # 🔍 DEBUG: Mostrar directorio del script
+    print(f"\n🔍 Directorio del script: {script_dir}")
 
-    # Rutas de imágenes
-    logo_path = os.path.join(project_root, "imagenes", "logo.png")
-    firma_path = os.path.join(project_root, "imagenes", "firma.png")
+    # 4. Rutas de imágenes
+    logo_path = os.path.join(script_dir, "imagenes", "logo.png")
+    firma_path = os.path.join(script_dir, "imagenes", "firma.png")
+    
+    # 🔍 DEBUG: Mostrar rutas completas
+    print(f"🔍 Ruta completa logo: {logo_path}")
+    print(f"🔍 Ruta completa firma: {firma_path}")
+    
+    # ✅ VERIFICAR Y AJUSTAR RUTAS (CRÍTICO)
+    if not os.path.exists(logo_path):
+        print(f"⚠️  Logo NO encontrado en: {logo_path}")
+        logo_path = None
+    else:
+        print(f"✅ Logo encontrado correctamente")
+    
+    if not os.path.exists(firma_path):
+        print(f"⚠️  Firma NO encontrada en: {firma_path}")
+        firma_path = None
+    else:
+        print(f"✅ Firma encontrada correctamente")
 
-    # Carpeta donde se guardarán los PDFs generados
-    output_folder = Path.home() / "Downloads"
+    # 5. Carpeta donde se guardarán los PDFs generados
+    output_folder = os.path.join(script_dir, "ordenes_generadas")
     os.makedirs(output_folder, exist_ok=True)
 
-    # Verificar rutas de archivos
-    print("="*95)
-    print("VERIFICANDO RUTAS DE ARCHIVOS")
-    print("="*95)
-    print(f"\nPDF: {pdf_file_path}  ¿Existe? {os.path.exists(pdf_file_path)}")
-    print(f"Logo: {logo_path}  ¿Existe? {os.path.exists(logo_path)}")
-    print(f"Firma: {firma_path}  ¿Existe? {os.path.exists(firma_path)}")
-    print(f"Carpeta de salida: {output_folder}")
-    print("="*95 + "\n")
-
-    # Procesar la cotización y generar la Orden de Compra
+    # 6. Procesar la cotización y generar la Orden de Compra
     if os.path.exists(pdf_file_path):
         procesar_cotizacion_y_generar_oc(
             pdf_file_path,
-            numero_oc,  # Número de OC ingresado manualmente
+            numero_oc,
             nombre_oc=None,
-            ruta_logo=logo_path if os.path.exists(logo_path) else None,
-            ruta_firma=firma_path if os.path.exists(firma_path) else None,
+            ruta_logo=logo_path,
+            ruta_firma=firma_path,
             carpeta_salida=output_folder
         )
     else:
-        print(f"❌ ERROR: No se encontró el archivo seleccionado")
+        print(f"❌ ERROR: No se encontró el archivo PDF seleccionado")
