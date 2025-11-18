@@ -16,15 +16,6 @@ logo_exists = os.path.exists(logo_path)
 firma_exists = os.path.exists(firma_path)
 
 # Mostrar estado de las imágenes en la sidebar
-with st.sidebar:
-    st.subheader("📁 Configuración de Imágenes")
-    st.write(f"🖼️ Logo: {'✅ Encontrado' if logo_exists else '❌ No encontrado'}")
-    st.write(f"✍️ Firma: {'✅ Encontrada' if firma_exists else '❌ No encontrada'}")
-    
-    if not logo_exists:
-        st.warning(f"Logo no encontrado en: {logo_path}")
-    if not firma_exists:
-        st.warning(f"Firma no encontrada en: {firma_path}")
 
 # 🏢 SELECTOR DE EMPRESA
 st.subheader("🏢 Selecciona la Empresa Compradora")
@@ -42,10 +33,10 @@ empresas = {
     "INGENIERIA Y CONSTRUCCION ALMONACID LIMITADA": {
         "razon_social": "INGENIERIA Y CONSTRUCCION ALMONACID LIMITADA",
         "rut": "77556476-8",
-        "direccion": "PJE SAN INDIGO 3322",
+        "direccion": "PJE SAN IGIDIO 3322",
         "comuna": "LA FLORIDA",
         "ciudad": "SANTIAGO",
-        "telefono": "940264963",
+        "telefono": "974534770",
     }
 }
 
@@ -70,17 +61,17 @@ with st.expander("ℹ️ Ver información de la empresa seleccionada"):
         st.write(f"**Teléfono:** {empresa_info['telefono']}")
       
 
-# Advertencia si se selecciona empresa sin configurar
-if empresa_seleccionada == "Otra Empresa (Configurar después)":
-    st.warning("⚠️ Has seleccionado una empresa que aún no está configurada. Los datos aparecerán como 'Por definir' en la orden de compra.")
-
 st.divider()
 
 # Subir archivo
-uploaded_file = st.file_uploader("Selecciona un PDF de cotización", type="pdf")
+st.markdown("<h3 style='font-size:20px;'>Selecciona un PDF de cotización</h3>", unsafe_allow_html=True)
+uploaded_file = st.file_uploader("", type="pdf")
+
 
 # Número de OC
-numero_oc = st.text_input("Número de Orden de Compra", help="Ejemplo: OC-2025-001")
+st.markdown("<h3 style='font-size:20px;'>Número de Orden de Compra</h3>", unsafe_allow_html=True)
+numero_oc = st.text_input("", help="Ejemplo: OC-2025-001")
+
 
 if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="primary"):
     with st.spinner("Procesando cotización..."):
