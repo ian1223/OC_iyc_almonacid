@@ -2,7 +2,7 @@ import streamlit as st
 from extract_pdf_data import extract_text_from_pdf, extract_all_data, crear_orden_compra_pdf
 from io import BytesIO
 import os
-import base64
+import fitz  # PyMuPDF
 
 st.title("Generador de Órdenes de Compra")
 st.markdown("Sube tu cotización en PDF y genera la OC automáticamente.")
@@ -64,34 +64,34 @@ st.divider()
 st.markdown("<h3 style='font-size:20px;'>Selecciona un PDF de cotización</h3>", unsafe_allow_html=True)
 uploaded_file = st.file_uploader("", type="pdf")
 
-# ✅ PREVISUALIZACIÓN DEL PDF CORREGIDA
+# ✅ PREVISUALIZACIÓN DEL PDF - CONVERTIR A IMAGEN
 if uploaded_file:
-    st.subheader("📄 Previsualización del PDF")
+    st.subheader("📄 Vista previa del PDF")
     
     try:
-        # Leer el archivo y convertir a base64
+        # Leer el PDF
         uploaded_file.seek(0)
         pdf_bytes = uploaded_file.read()
-        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
         
-        # Mostrar PDF en iframe
-        pdf_display = f'''
-        <iframe 
-            src="data:application/pdf;base64,{base64_pdf}" 
-            width="100%" 
-            height="600px" 
-            type="application/pdf"
-            style="border: 1px solid #ddd; border-radius: 5px;">
-        </iframe>
-        '''
-        st.markdown(pdf_display, unsafe_allow_html=True)
+        # Convertir primera página a imagen
+        pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
+        first_page = pdf_document[0]
         
-        # Regresar el puntero al inicio para uso posterior
+        # Renderizar como imagen (mayor zoom = mejor calidad)
+        pix = first_page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        img_bytes = pix.tobytes("png")
+        
+        # Mostrar imagen
+        st.image(img_bytes, caption=f"Primera página - {uploaded_file.name}", use_container_width=True)
+        
+        pdf_document.close()
+        
+        # Regresar el puntero al inicio
         uploaded_file.seek(0)
         
     except Exception as e:
         st.warning(f"⚠️ No se pudo previsualizar el PDF: {str(e)}")
-        st.info("El archivo se procesará normalmente al hacer clic en 'Procesar y generar OC'")
+        st.info(f"✅ Archivo cargado: {uploaded_file.name}")
 
 st.markdown("<h3 style='font-size:20px;'>Número de Orden de Compra</h3>", unsafe_allow_html=True)
 numero_oc = st.text_input("", help="Ejemplo: OC-2025-001")
