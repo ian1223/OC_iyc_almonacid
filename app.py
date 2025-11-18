@@ -2,22 +2,20 @@ import streamlit as st
 from extract_pdf_data import extract_text_from_pdf, extract_all_data, crear_orden_compra_pdf
 from io import BytesIO
 import os
+import base64
 
 st.title("Generador de Órdenes de Compra")
 st.markdown("Sube tu cotización en PDF y genera la OC automáticamente.")
 
-# 🔧 SOLUCIÓN: Obtener rutas de las imágenes
+# 🔧 Obtener rutas de las imágenes
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logo_path = os.path.join(script_dir, "imagenes", "logo.png")
 firma_path = os.path.join(script_dir, "imagenes", "firma.png")
 
-# Verificar existencia de imágenes
 logo_exists = os.path.exists(logo_path)
 firma_exists = os.path.exists(firma_path)
 
-# Mostrar estado de las imágenes en la sidebar
-
-# 🏢 SELECTOR DE EMPRESA
+# 🏢 Selector de empresa
 st.subheader("🏢 Selecciona la Empresa Compradora")
 
 empresas = {
@@ -46,7 +44,7 @@ empresa_seleccionada = st.selectbox(
     help="Selecciona la empresa que está realizando la compra"
 )
 
-# Mostrar información de la empresa seleccionada
+# Mostrar información empresa
 with st.expander("ℹ️ Ver información de la empresa seleccionada"):
     empresa_info = empresas[empresa_seleccionada]
     
@@ -59,37 +57,61 @@ with st.expander("ℹ️ Ver información de la empresa seleccionada"):
     with col2:
         st.write(f"**Ciudad:** {empresa_info['ciudad']}")
         st.write(f"**Teléfono:** {empresa_info['telefono']}")
-      
 
 st.divider()
 
-# Subir archivo
+# Subida PDF
 st.markdown("<h3 style='font-size:20px;'>Selecciona un PDF de cotización</h3>", unsafe_allow_html=True)
 uploaded_file = st.file_uploader("", type="pdf")
 
+# ✅ PREVISUALIZACIÓN DEL PDF CORREGIDA
+if uploaded_file:
+    st.subheader("📄 Previsualización del PDF")
+    
+    try:
+        # Leer el archivo y convertir a base64
+        uploaded_file.seek(0)
+        pdf_bytes = uploaded_file.read()
+        base64_pdf = base64.b64encode(pdf_bytes).decode('utf-8')
+        
+        # Mostrar PDF en iframe
+        pdf_display = f'''
+        <iframe 
+            src="data:application/pdf;base64,{base64_pdf}" 
+            width="100%" 
+            height="600px" 
+            type="application/pdf"
+            style="border: 1px solid #ddd; border-radius: 5px;">
+        </iframe>
+        '''
+        st.markdown(pdf_display, unsafe_allow_html=True)
+        
+        # Regresar el puntero al inicio para uso posterior
+        uploaded_file.seek(0)
+        
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo previsualizar el PDF: {str(e)}")
+        st.info("El archivo se procesará normalmente al hacer clic en 'Procesar y generar OC'")
 
-# Número de OC
 st.markdown("<h3 style='font-size:20px;'>Número de Orden de Compra</h3>", unsafe_allow_html=True)
 numero_oc = st.text_input("", help="Ejemplo: OC-2025-001")
 
-
+# Procesar PDF y generar OC
 if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="primary"):
     with st.spinner("Procesando cotización..."):
-        # Leer archivo en memoria
+
+        # Importante: regresar el puntero al inicio
+        uploaded_file.seek(0)
         file_bytes = uploaded_file.read()
-        
-        # Extraer texto y datos
+
+        # Extracción de datos
         text = extract_text_from_pdf(BytesIO(file_bytes))
         datos = extract_all_data(text)
         
-        # 🏢 AGREGAR INFORMACIÓN DE LA EMPRESA COMPRADORA
+        # Agregar empresa
         datos['empresa_compradora'] = empresas[empresa_seleccionada]
-        
-        # Debug: Verificar que los datos están correctos
-        print(f"\n🏢 Empresa seleccionada: {empresa_seleccionada}")
-        print(f"📋 Datos de la empresa: {datos['empresa_compradora']}")
 
-        # Crear PDF en memoria con las rutas de las imágenes
+        # Crear PDF final
         pdf_buffer = BytesIO()
         crear_orden_compra_pdf(
             datos, 
@@ -98,11 +120,11 @@ if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="prim
             ruta_logo=logo_path if logo_exists else None,
             ruta_firma=firma_path if firma_exists else None
         )
-        pdf_buffer.seek(0)  # Volver al inicio del buffer
+        pdf_buffer.seek(0)
 
     st.success("✅ Orden de Compra generada exitosamente!")
 
-# Card con información completa
+    # Resumen tarjeta
     with st.container():
         col1, col2, col3 = st.columns([2, 1, 1])
 
@@ -126,7 +148,7 @@ if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="prim
 
     st.divider()
     
-    # Mostrar resumen detallado
+    # Resumen detallado
     with st.expander("📄 Ver resumen completo"):
         st.write("**Empresa Compradora:**")
         st.write(f"- {empresa_info['razon_social']}")
@@ -136,13 +158,13 @@ if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="prim
         st.write(f"**Número de Orden de Compra:** {numero_oc}")
         st.write(f"**Fecha:** {datos.get('fecha', 'N/A')}")
         st.write(f"**Vendedor/a:** {datos.get('vendedor', 'N/A')}")
-    
-    razon_social_limpia = empresa_info['razon_social'].replace(' ', '_').replace('.', '')
+
+    razón_social_limpia = empresa_info['razon_social'].replace(' ', '_').replace('.', '')
 
     st.download_button(
         label="📥 Descargar Orden de Compra",
         data=pdf_buffer,
-        file_name=f"OC_{razon_social_limpia}_{numero_oc}.pdf",
+        file_name=f"OC_{razón_social_limpia}_{numero_oc}.pdf",
         mime="application/pdf",
         type="primary"
     )
