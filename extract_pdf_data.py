@@ -136,7 +136,7 @@ def extract_numero_cotizacion(text):
 
 def extract_productos_mejorado(text):
     """
-    Extrae TODOS los productos/materiales de la cotización con debugging mejorado.
+    Extrae TODOS los productos/materiales de la cotización - VERSIÓN DEBUG COMPLETA
     """
     productos = []
     
@@ -153,98 +153,150 @@ def extract_productos_mejorado(text):
     
     if not seccion_productos:
         print("❌ No se encontró la sección de productos")
-        lines = text.split('\n')
-        for i, line in enumerate(lines):
-            if 'Pos' in line or 'Material' in line or 'Descripción' in line:
-                print(f"📍 Línea {i}: {line}")
+        print("\n🔍 Buscando palabras clave en el texto...")
+        if 'Pos' in text:
+            print("✓ Encontrado 'Pos'")
+        if 'Material' in text:
+            print("✓ Encontrado 'Material'")
+        if 'Descripción' in text or 'Descripcion' in text:
+            print("✓ Encontrado 'Descripción'")
         return productos
     
     texto_productos = seccion_productos.group(0)
     
-    # DEBUG: Mostrar la sección completa de productos
-    print("\n📄 SECCIÓN DE PRODUCTOS ENCONTRADA:")
+    print("\n📄 SECCIÓN DE PRODUCTOS ENCONTRADA (primeros 1500 caracteres):")
     print("-" * 100)
-    print(texto_productos[:1000])
+    print(texto_productos[:1500])
     print("-" * 100)
     
+    # Dividir por líneas para análisis manual
     lineas = texto_productos.split('\n')
     print(f"\n📊 Total de líneas en la sección: {len(lineas)}")
-    print("\n🔍 ANALIZANDO PRIMERAS 20 LÍNEAS:")
+    print("\n🔍 MOSTRANDO TODAS LAS LÍNEAS (primeras 25):")
     print("-" * 100)
-    for i, linea in enumerate(lineas[:20]):
+    
+    for i, linea in enumerate(lineas[:25]):
         if linea.strip():
+            # Mostrar con indicadores visuales
             print(f"Línea {i:2d}: |{linea}|")
     print("-" * 100)
     
-    # Patrones a probar
+    # 🆕 MÚLTIPLES PATRONES A PROBAR
     patrones = [
-        r'(\d+)\s+(\d+)\s+([^\n]+?)\s+(\d+)\s+(UN|ROM|KG|MT|M2|M3)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)',
-        r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+)\s+(\w+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)',
-        r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+)\s+(\w+)\s+\$?\s*([\d.,]+)\s+\$?\s*([\d.,]+)\s+\$?\s*([\d.,]+)\s+\$?\s*([\d.,]+)',
-        r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+)\s+([A-Z]+)\s+\$?\s*([\d\s.,]+)\s+\$?\s*([\d\s.,]+)\s+\$?\s*([\d\s.,]+)\s+\$?\s*([\d\s.,]+)',
+        # Patrón 1: Con espacios variables
+        r'(\d+)\s+(\d+)\s+(.+?)\s+(\d+[.,]?\d*)\s+([A-Z]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)',
+        
+        # Patrón 2: Más específico para el formato Easy
+        r'^(\d+)\s+(\d+)\s+([^\n]+?)\s+(\d+[.,]?\d*)\s+(\w+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)',
+        
+        # Patrón 3: Sin ancla de inicio de línea
+        r'(\d{1,3})\s+(\d{5,7})\s+([A-ZÁÉÍÓÚÑ][\w\s/\-\.]+?)\s+(\d+[.,]?\d*)\s+([A-Z]{2,4})\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)',
+        
+        # Patrón 4: Muy flexible
+        r'(\d+)\s+(\d+)\s+([^\d]+?)\s+(\d+)\s*,?\s*(\d*)\s+([A-Z]+)\s+([\d.,\s]+)',
     ]
     
-    matches = []
-    patron_exitoso = None
+    mejor_resultado = []
+    patron_exitoso = 0
     
-    for idx, pattern in enumerate(patrones, 1):
+    for idx, patron in enumerate(patrones, 1):
         print(f"\n🧪 PROBANDO PATRÓN {idx}:")
-        print(f"   {pattern[:80]}...")
-        temp_matches = re.findall(pattern, texto_productos, re.IGNORECASE)
-        print(f"   ✓ Encontrados: {len(temp_matches)} productos")
+        print(f"   Regex: {patron[:80]}...")
         
-        if temp_matches and len(temp_matches) > len(matches):
-            matches = temp_matches
-            patron_exitoso = idx
-            print(f"   🎯 MEJOR RESULTADO HASTA AHORA!")
+        try:
+            matches = re.findall(patron, texto_productos, re.MULTILINE | re.IGNORECASE)
+            print(f"   ✓ Encontrados: {len(matches)} coincidencias")
+            
+            if matches:
+                print(f"   📋 Primera coincidencia: {matches[0]}")
+                
+                if len(matches) > len(mejor_resultado):
+                    mejor_resultado = matches
+                    patron_exitoso = idx
+                    print(f"   🎯 MEJOR RESULTADO HASTA AHORA!")
+        except Exception as e:
+            print(f"   ❌ Error con patrón: {e}")
     
-    if not matches:
-        print("\n❌ NO SE ENCONTRARON PRODUCTOS CON NINGÚN PATRÓN")
-        print("\n💡 SUGERENCIA: Muestra las primeras 30 líneas del PDF para análisis manual")
+    if not mejor_resultado:
+        print("\n❌ NINGÚN PATRÓN FUNCIONÓ")
+        print("\n💡 Intentando extracción manual línea por línea...")
+        
+        # Extracción manual como último recurso
+        for i, linea in enumerate(lineas[1:], 1):  # Saltar encabezado
+            linea = linea.strip()
+            if not linea:
+                continue
+            
+            # Buscar líneas que empiecen con números
+            if re.match(r'^\d+\s+\d+', linea):
+                print(f"\n🔍 Línea candidata {i}: {linea}")
+                
+                # Intentar dividir por espacios múltiples
+                partes = re.split(r'\s{2,}', linea)
+                print(f"   Partes: {partes}")
+                
+                if len(partes) >= 9:
+                    try:
+                        producto = {
+                            'posicion': partes[0],
+                            'codigo_material': partes[1],
+                            'descripcion': partes[2],
+                            'cantidad': partes[3],
+                            'unidad': partes[4],
+                            'precio_unitario_original': partes[5],
+                            'precio_con_descuento': partes[6],
+                            'valor_con_descuento': partes[7],
+                            'valor_total': partes[8]
+                        }
+                        productos.append(producto)
+                        print(f"   ✅ Producto extraído manualmente")
+                    except Exception as e:
+                        print(f"   ❌ Error: {e}")
+        
+        if productos:
+            print(f"\n✅ Extracción manual exitosa: {len(productos)} productos")
+        
         return productos
     
     print(f"\n✅ PATRÓN EXITOSO: #{patron_exitoso}")
-    print(f"📦 Total de productos encontrados: {len(matches)}")
+    print(f"📦 Total de coincidencias: {len(mejor_resultado)}")
     
     print("\n" + "="*100)
-    print("📋 DETALLE DE PRODUCTOS EXTRAÍDOS:")
+    print("📋 PROCESANDO PRODUCTOS:")
     print("="*100)
     
-    for i, match in enumerate(matches, 1):
+    for i, match in enumerate(mejor_resultado, 1):
         try:
-            print(f"\n--- PRODUCTO {i} ---")
-            print(f"Raw match: {match}")
+            print(f"\n--- MATCH {i} ---")
+            print(f"Raw: {match}")
             
-            producto = {
-                'posicion': match[0].strip(),
-                'codigo_material': match[1].strip(),
-                'descripcion': match[2].strip(),
-                'cantidad': match[3].strip(),
-                'unidad': match[4].strip(),
-                'precio_unitario_original': match[5].strip() if len(match) > 5 else "0",
-                'precio_con_descuento': match[6].strip() if len(match) > 6 else "0",
-                'valor_con_descuento': match[7].strip() if len(match) > 7 else "0",
-                'valor_total': match[8].strip() if len(match) > 8 else "0"
-            }
+            # Ajustar según cantidad de grupos capturados
+            if len(match) >= 9:
+                producto = {
+                    'posicion': match[0].strip(),
+                    'codigo_material': match[1].strip(),
+                    'descripcion': match[2].strip(),
+                    'cantidad': match[3].replace(',', '.').strip(),
+                    'unidad': match[4].strip(),
+                    'precio_unitario_original': match[5].strip(),
+                    'precio_con_descuento': match[6].strip(),
+                    'valor_con_descuento': match[7].strip(),
+                    'valor_total': match[8].strip()
+                }
+            else:
+                print(f"   ⚠️ Match incompleto: {len(match)} grupos (necesita 9)")
+                continue
             
-            print(f"  Pos: {producto['posicion']}")
-            print(f"  Código: {producto['codigo_material']}")
-            print(f"  Descripción: {producto['descripcion'][:50]}...")
-            print(f"  Cantidad: {producto['cantidad']}")
-            print(f"  Unidad: {producto['unidad']}")
-            print(f"  Precio Unit Original: {producto['precio_unitario_original']}")
-            print(f"  Precio con Descuento: {producto['precio_con_descuento']}")
-            print(f"  Valor con Descuento: {producto['valor_con_descuento']}")
-            print(f"  Valor Total: {producto['valor_total']}")
+            print(f"  ✅ Pos: {producto['posicion']} | Código: {producto['codigo_material']}")
+            print(f"     Descripción: {producto['descripcion'][:50]}")
             
             productos.append(producto)
             
         except Exception as e:
-            print(f"  ❌ ERROR procesando producto {i}: {e}")
-            print(f"     Match completo: {match}")
+            print(f"  ❌ ERROR: {e}")
     
     print("\n" + "="*100)
-    print(f"🎯 RESUMEN: {len(productos)} productos extraídos exitosamente")
+    print(f"🎯 TOTAL: {len(productos)} productos extraídos")
     print("="*100)
     
     return productos
