@@ -3,17 +3,40 @@ from extract_pdf_data import extract_text_from_pdf, extract_all_data, crear_orde
 from io import BytesIO
 import os
 import fitz  # PyMuPDF
+import json
 
 st.title("Generador de Órdenes de Compra")
 st.markdown("Sube tu cotización en PDF y genera la OC automáticamente.")
 
-# 🔧 Obtener rutas de las imágenes
+# 🔧 Obtener rutas de las imágenes y archivo de datos
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logo_path = os.path.join(script_dir, "imagenes", "logo.png")
 firma_path = os.path.join(script_dir, "imagenes", "firma.png")
+datos_oc_path = os.path.join(script_dir, "datos_oc.json")
 
 logo_exists = os.path.exists(logo_path)
 firma_exists = os.path.exists(firma_path)
+
+# 💾 FUNCIONES PARA PERSISTENCIA DE DATOS
+def cargar_ultima_oc():
+    """Carga la última OC desde el archivo JSON"""
+    try:
+        if os.path.exists(datos_oc_path):
+            with open(datos_oc_path, 'r', encoding='utf-8') as f:
+                datos = json.load(f)
+                return datos.get('ultima_oc', '')
+    except Exception as e:
+        print(f"Error al cargar última OC: {e}")
+    return ''
+
+def guardar_ultima_oc(numero_oc):
+    """Guarda la última OC en el archivo JSON"""
+    try:
+        datos = {'ultima_oc': numero_oc}
+        with open(datos_oc_path, 'w', encoding='utf-8') as f:
+            json.dump(datos, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error al guardar última OC: {e}")
 
 # 🏢 Selector de empresa
 st.subheader("🏢 Selecciona la Empresa Compradora")
@@ -93,8 +116,22 @@ if uploaded_file:
         st.warning(f"⚠️ No se pudo previsualizar el PDF: {str(e)}")
         st.info(f"✅ Archivo cargado: {uploaded_file.name}")
 
+# 📊 CONTADOR DE ÓRDENES DE COMPRA CON PERSISTENCIA
 st.markdown("<h3 style='font-size:20px;'>Número de Orden de Compra</h3>", unsafe_allow_html=True)
-numero_oc = st.text_input("", help="Ejemplo: OC-2025-001")
+
+# Cargar última OC del archivo
+ultima_oc_guardada = cargar_ultima_oc()
+
+# Mostrar última OC registrada
+col1, col2 = st.columns([1, 2])
+with col1:
+    if ultima_oc_guardada:
+        st.info(f"📋 Última OC: **{ultima_oc_guardada}**")
+    else:
+        st.info("📋 Sin OC previas")
+
+with col2:
+    numero_oc = st.text_input("Ingresa el número de OC", help="Ejemplo: OC-2025-001", label_visibility="collapsed")
 
 # Procesar PDF y generar OC
 if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="primary"):
@@ -121,6 +158,9 @@ if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="prim
             ruta_firma=firma_path if firma_exists else None
         )
         pdf_buffer.seek(0)
+        
+        # Guardar última OC en archivo (persiste después de F5)
+        guardar_ultima_oc(numero_oc)
 
     st.success("✅ Orden de Compra generada exitosamente!")
 
@@ -158,6 +198,32 @@ if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="prim
         st.write(f"**Número de Orden de Compra:** {numero_oc}")
         st.write(f"**Fecha:** {datos.get('fecha', 'N/A')}")
         st.write(f"**Vendedor/a:** {datos.get('vendedor', 'N/A')}")
+        st.write("")
+        
+        # Detalle de productos
+        st.write("**📦 Detalle de Productos:**")
+        productos = datos.get('productos', [])
+        if productos:
+            for idx, prod in enumerate(productos, 1):
+                st.write(f"**{idx}. {prod.get('descripcion', 'Sin descripción')}**")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write(f"Código: {prod.get('codigo_material', 'N/A')}")
+                with col2:
+                    st.write(f"Cantidad: {prod.get('cantidad', 'N/A')} {prod.get('unidad', '')}")
+                with col3:
+                    st.write(f"Precio Unit: ${prod.get('precio_con_descuento', 'N/A')}")
+                st.write(f"Total: ${prod.get('valor_con_descuento', 'N/A')}")
+                if idx < len(productos):
+                    st.divider()
+        else:
+            st.write("No se encontraron productos")
+        
+        st.write("")
+        st.write("**💰 Totales:**")
+        st.write(f"- Subtotal: ${datos.get('subtotal', 'N/A')}")
+        st.write(f"- IVA: ${datos.get('iva', 'N/A')}")
+        st.write(f"- **TOTAL: ${datos.get('total_final', 'N/A')}**")
 
     razón_social_limpia = empresa_info['razon_social'].replace(' ', '_').replace('.', '')
 
