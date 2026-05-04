@@ -18,25 +18,36 @@ logo_exists = os.path.exists(logo_path)
 firma_exists = os.path.exists(firma_path)
 
 # 💾 FUNCIONES PARA PERSISTENCIA DE DATOS
-def cargar_ultima_oc():
-    """Carga la última OC desde el archivo JSON"""
+def cargar_datos_oc():
+    """Carga los datos de OC desde el archivo JSON"""
     try:
         if os.path.exists(datos_oc_path):
             with open(datos_oc_path, 'r', encoding='utf-8') as f:
                 datos = json.load(f)
-                return datos.get('ultima_oc', '')
+                return {
+                    'ultima_oc': datos.get('ultima_oc', ''),
+                    'total_generadas': datos.get('total_generadas', 0),
+                    'historial': datos.get('historial', [])
+                }
     except Exception as e:
-        print(f"Error al cargar última OC: {e}")
-    return ''
+        print(f"Error al cargar datos OC: {e}")
+    return {'ultima_oc': '', 'total_generadas': 0, 'historial': []}
 
-def guardar_ultima_oc(numero_oc):
-    """Guarda la última OC en el archivo JSON"""
+def guardar_datos_oc(numero_oc, datos_previos):
+    """Guarda la OC generada y actualiza el conteo e historial"""
     try:
-        datos = {'ultima_oc': numero_oc}
+        historial = datos_previos.get('historial', [])
+        if numero_oc not in historial:
+            historial.append(numero_oc)
+        datos = {
+            'ultima_oc': numero_oc,
+            'total_generadas': len(historial),
+            'historial': historial
+        }
         with open(datos_oc_path, 'w', encoding='utf-8') as f:
             json.dump(datos, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Error al guardar última OC: {e}")
+        print(f"Error al guardar datos OC: {e}")
 
 # 🏢 Selector de empresa
 st.subheader("🏢 Selecciona la Empresa Compradora")
@@ -119,18 +130,26 @@ if uploaded_file:
 # 📊 CONTADOR DE ÓRDENES DE COMPRA CON PERSISTENCIA
 st.markdown("<h3 style='font-size:20px;'>Número de Orden de Compra</h3>", unsafe_allow_html=True)
 
-# Cargar última OC del archivo
-ultima_oc_guardada = cargar_ultima_oc()
+# Cargar datos OC del archivo
+datos_oc_previos = cargar_datos_oc()
+ultima_oc_guardada = datos_oc_previos['ultima_oc']
+total_generadas = datos_oc_previos['total_generadas']
 
-# Mostrar última OC registrada
-col1, col2 = st.columns([1, 2])
+# Mostrar última OC y conteo
+col1, col2, col3 = st.columns([1, 1, 2])
 with col1:
     if ultima_oc_guardada:
         st.info(f"📋 Última OC: **{ultima_oc_guardada}**")
     else:
         st.info("📋 Sin OC previas")
-
 with col2:
+    st.info(f"🔢 Total generadas: **{total_generadas}**")
+if datos_oc_previos['historial']:
+    with st.expander("📜 Ver historial de OC generadas"):
+        for oc in reversed(datos_oc_previos['historial']):
+            st.write(f"• {oc}")
+
+with col3:
     numero_oc = st.text_input("Ingresa el número de OC", help="Ejemplo: OC-2025-001", label_visibility="collapsed")
 
 # Procesar PDF y generar OC
@@ -160,7 +179,7 @@ if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="prim
         pdf_buffer.seek(0)
         
         # Guardar última OC en archivo (persiste después de F5)
-        guardar_ultima_oc(numero_oc)
+        guardar_datos_oc(numero_oc, datos_oc_previos)
 
     st.success("✅ Orden de Compra generada exitosamente!")
 
