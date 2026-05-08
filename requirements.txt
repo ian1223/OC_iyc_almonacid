@@ -2,3 +2,5 @@ PyPDF2
 reportlab
 streamlit
 PyMuPDF
+gspread
+google-auth

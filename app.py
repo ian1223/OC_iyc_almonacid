@@ -2,52 +2,65 @@ import streamlit as st
 from extract_pdf_data import extract_text_from_pdf, extract_all_data, crear_orden_compra_pdf
 from io import BytesIO
 import os
+from datetime import datetime
 import fitz  # PyMuPDF
-import json
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.title("Generador de Órdenes de Compra")
 st.markdown("Sube tu cotización en PDF y genera la OC automáticamente.")
 
-# 🔧 Obtener rutas de las imágenes y archivo de datos
+# 🔧 Obtener rutas de las imágenes
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logo_path = os.path.join(script_dir, "imagenes", "logo.png")
 firma_path = os.path.join(script_dir, "imagenes", "firma.png")
-datos_oc_path = os.path.join(script_dir, "datos_oc.json")
 
 logo_exists = os.path.exists(logo_path)
 firma_exists = os.path.exists(firma_path)
 
-# 💾 FUNCIONES PARA PERSISTENCIA DE DATOS
-def cargar_datos_oc():
-    """Carga los datos de OC desde el archivo JSON"""
-    try:
-        if os.path.exists(datos_oc_path):
-            with open(datos_oc_path, 'r', encoding='utf-8') as f:
-                datos = json.load(f)
-                return {
-                    'ultima_oc': datos.get('ultima_oc', ''),
-                    'total_generadas': datos.get('total_generadas', 0),
-                    'historial': datos.get('historial', [])
-                }
-    except Exception as e:
-        print(f"Error al cargar datos OC: {e}")
-    return {'ultima_oc': '', 'total_generadas': 0, 'historial': []}
+# 💾 PERSISTENCIA EN GOOGLE SHEETS
+@st.cache_resource
+def _get_gsheet():
+    """Conecta a la planilla de Google Sheets usando st.secrets."""
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    creds = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=scopes,
+    )
+    client = gspread.authorize(creds)
+    sheet = client.open(st.secrets["sheet_name"]).sheet1
+    if not sheet.row_values(1):
+        sheet.append_row(["Fecha", "NumeroOC", "Empresa"])
+    return sheet
 
-def guardar_datos_oc(numero_oc, datos_previos):
-    """Guarda la OC generada y actualiza el conteo e historial"""
+def cargar_datos_oc():
+    """Lee el historial desde Google Sheets."""
     try:
-        historial = datos_previos.get('historial', [])
-        if numero_oc not in historial:
-            historial.append(numero_oc)
-        datos = {
-            'ultima_oc': numero_oc,
+        sheet = _get_gsheet()
+        records = sheet.get_all_records()
+        historial = [str(r.get("NumeroOC", "")).strip() for r in records if str(r.get("NumeroOC", "")).strip()]
+        return {
+            'ultima_oc': historial[-1] if historial else '',
             'total_generadas': len(historial),
-            'historial': historial
+            'historial': historial,
         }
-        with open(datos_oc_path, 'w', encoding='utf-8') as f:
-            json.dump(datos, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Error al guardar datos OC: {e}")
+        st.error(f"⚠️ No se pudo conectar a Google Sheets: {e}")
+        return {'ultima_oc': '', 'total_generadas': 0, 'historial': []}
+
+def guardar_datos_oc(numero_oc, empresa_nombre, historial_actual):
+    """Agrega una nueva fila al Google Sheet con la OC generada."""
+    try:
+        if str(numero_oc) in historial_actual:
+            return
+        sheet = _get_gsheet()
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sheet.append_row([fecha, str(numero_oc), empresa_nombre])
+    except Exception as e:
+        st.error(f"⚠️ No se pudo guardar la OC en Google Sheets: {e}")
 
 # 🏢 Selector de empresa
 st.subheader("🏢 Selecciona la Empresa Compradora")
@@ -178,8 +191,8 @@ if uploaded_file and numero_oc and st.button("Procesar y generar OC", type="prim
         )
         pdf_buffer.seek(0)
         
-        # Guardar última OC en archivo (persiste después de F5)
-        guardar_datos_oc(numero_oc, datos_oc_previos)
+        # Guardar OC en Google Sheets (persistente entre reinicios de Streamlit Cloud)
+        guardar_datos_oc(numero_oc, empresa_seleccionada, datos_oc_previos['historial'])
 
     st.success("✅ Orden de Compra generada exitosamente!")
 
